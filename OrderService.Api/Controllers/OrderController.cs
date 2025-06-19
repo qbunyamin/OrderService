@@ -1,8 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using MassTransit;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using OrderService.Api.Data;
+using OrderService.Shared.NewFolder;
 using StackExchange.Redis;
 
 namespace OrderService.Api.Controllers;
@@ -14,11 +16,13 @@ public class OrderController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ILogger<OrderController> _logger;
+    private readonly IPublishEndpoint _publishEndpoint;
 
-    public OrderController(AppDbContext context, ILogger<OrderController> logger)
+    public OrderController(AppDbContext context, ILogger<OrderController> logger, IPublishEndpoint publishEndpoint)
     {
         _context = context;
         _logger = logger;
+        _publishEndpoint = publishEndpoint;
     }
 
     //Post
@@ -41,7 +45,18 @@ public class OrderController : ControllerBase
         _context.Orders.Add(order);
         await _context.SaveChangesAsync();
 
-        //detaylı log bilgisi
+        // kuyruklama mesaj
+        await _publishEndpoint.Publish(new OrderCreatedEvent
+        {
+            OrderId = order.Id,
+            UserId = order.UserId,
+            ProductId = order.ProductId,
+            Quantity = order.Quantity,
+            PaymentMethod = order.PaymentMethod,
+            CreatedAt = order.CreatedAt
+        });
+
+        //detaylı log bilgisi toda aslında Kuyruklama sırasında Redis ile loglama yapıoruz ama şuanlık logger yapısı için bozmuyorum.
         _logger.LogInformation("Kullanıcı {UserId} tarafından yeni bir sipariş verildi. Sipariş ID: {OrderId}, Ürün ID: {ProductId}, Adet: {Quantity}, Ödeme Yöntemi: {PaymentMethod}",
       order.UserId, order.Id, order.ProductId, order.Quantity, order.PaymentMethod);
 
